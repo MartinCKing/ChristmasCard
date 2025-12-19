@@ -54,8 +54,8 @@ html, body {
 
 <body>
 <div class="slideshow" id="slideshow">
-    <img src="Slide3.PNG">
     <img src="Slide1.PNG">
+    <img src="Slide3.PNG">
 </div>
 
 <script>
@@ -103,7 +103,30 @@ html, body {
     img.style.animationDelay = `${delay}s`;
   });
 })();
+</script>
+<script>
+(() => {
+  const slideshow = document.getElementById("slideshow");
+  let paused = false;
 
+  const togglePause = () => {
+    paused = !paused;
+    const state = paused ? "paused" : "running";
+
+    slideshow.querySelectorAll("img").forEach(img => {
+      img.style.animationPlayState = state;
+    });
+  };
+
+  // Click for desktop
+  slideshow.addEventListener("click", togglePause);
+
+  // Touch for mobile (prevents double-trigger)
+  slideshow.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    togglePause();
+  }, { passive: false });
+})();
 </script>
 <script>
     // Change the URL path after load
