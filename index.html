@@ -4,7 +4,7 @@
 
 <meta charset="UTF-8">
 <title>Happy New Year 2026</title>
-<link rel="icon" href="QARA.png" type="image/png"/>
+
 <!-- Open Graph metadata -->
 <meta property="og:type" content="website">
 <meta property="og:title" content="Happy New Year 2026">
@@ -56,8 +56,6 @@ html, body {
 <div class="slideshow" id="slideshow">
     <img src="Slide1.PNG">
     <img src="Slide2.PNG">
-    <img src="Slide3.PNG">
-    <img src="Slide4.PNG">
 </div>
 
 <script>
@@ -72,7 +70,7 @@ html, body {
 
   // 1) Substitute any slide via sub1/sub2/sub3/sub4
   // Example: ?sub3=MyOtherImage.PNG
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 2; i++) {
   const sub = params.get(`sub${i}`);
   if (sub) {
     const img = slideshow.querySelector(`img:nth-child(${i})`);
@@ -132,6 +130,3 @@ html, body {
 </script>
 </body>
 </html>
-
-
-
