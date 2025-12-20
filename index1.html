@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Happy Holidays</title>
+
+<!-- Open Graph metadata -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Happy Holidays">
+<meta property="og:description" content="Wishing you health, happiness, and prosperity in 2026">
+<meta property="og:image" content="https://martincking.github.io/ChristmasCard/Slide1.PNG">
+<meta property="og:url" content="https://martincking.github.io/ChristmasCard/index.html">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: black;
+}
+
+.slideshow {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: black;
+}
+
+/* IMPORTANT:
+   The slide itself is an opaque black "matte" covering the whole screen.
+   This prevents seeing any other slide through the contain-margins. */
+.slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: black;   /* blocks anything behind it */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1s ease-in-out;
+  z-index: 0;
+}
+
+.slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* The currently visible slide (fading out) */
+.slide.show {
+  opacity: 1;
+}
+
+/* The incoming slide (fading in) sits on top */
+.slide.top {
+  z-index: 1;
+}
+</style>
+</head>
+
+<body>
+
+<div class="slideshow" id="slideshow">
+  <!-- Keep your image list exactly as you like -->
+  <img src="Slide1.PNG">
+  <img src="Slide2.PNG">
+  <img src="Slide3.PNG">
+  <img src="Slide4.PNG">
+  <img src="Slide5.PNG">
+  <img src="IMG20251220155230.PNG">
+  <img src="IMG20251220155304.PNG">
+</div>
+
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+
+  const stillTime = parseFloat(params.get("time")) || 3; // seconds fully visible
+  const fadeTime  = 1;                                   // seconds (matches CSS transition)
+  const maxSlides = 500;
+
+  const slideshow = document.getElementById("slideshow");
+
+  // Grab original <img> list (from your HTML)
+  const originalImgs = Array.from(slideshow.querySelectorAll("img"));
+
+  /* ---------------------------
+     0) SLIDE COUNT (?count=1..500)
+  ---------------------------- */
+  const requestedCount = parseInt(params.get("count"), 10);
+  const slideCount = Math.min(
+    Math.max(requestedCount || originalImgs.length, 1),
+    maxSlides
+  );
+
+  const imgs = originalImgs.slice(0, slideCount);
+
+  // Remove any extra images beyond count
+  originalImgs.slice(slideCount).forEach(img => img.remove());
+
+  /* ---------------------------
+     1) SUBSTITUTE SLIDES (?sub1=... ?sub2=...)
+  ---------------------------- */
+  for (let i = 1; i <= imgs.length; i++) {
+    const sub = params.get(`sub${i}`);
+    if (sub && imgs[i - 1]) {
+      imgs[i - 1].src = sub;
+    }
+  }
+
+  /* ---------------------------
+     2) START ON A SPECIFIC IMAGE (?n=Slide3.PNG)
+  ---------------------------- */
+  const startImage = params.get("n");
+  if (startImage) {
+    const idx = imgs.findIndex(img => img.getAttribute("src") === startImage);
+    if (idx > -1) {
+      const reordered = imgs.slice(idx).concat(imgs.slice(0, idx));
+      reordered.forEach(img => slideshow.appendChild(img));
+    }
+  }
+
+  // Refresh imgs in DOM order after reordering/substitution
+  const orderedImgs = Array.from(slideshow.querySelectorAll("img"));
+
+  /* ---------------------------
+     3) Convert <img> tags into .slide wrappers with black matte
+        (prevents bleed-through during crossfade)
+  ---------------------------- */
+  const slides = orderedImgs.map(img => {
+    const wrap = document.createElement("div");
+    wrap.className = "slide";
+    // move <img> into wrapper
+    img.parentNode.insertBefore(wrap, img);
+    wrap.appendChild(img);
+    return wrap;
+  });
+
+  let index = 0;
+  let timer = null;
+  let paused = false;
+
+  function showInitial() {
+    slides.forEach(s => {
+      s.classList.remove("show", "top");
+      s.style.zIndex = "0";
+    });
+    slides[0].classList.add("show", "top");
+    slides[0].style.zIndex = "1";
+  }
+
+  function crossfadeTo(nextIndex) {
+    const current = slides[index];
+    const next = slides[nextIndex];
+
+    // Ensure stacking: next on top
+    slides.forEach(s => { s.style.zIndex = "0"; s.classList.remove("top"); });
+    current.style.zIndex = "0";
+    next.style.zIndex = "1";
+    next.classList.add("top");
+
+    // Make sure both are visible for crossfade
+    current.classList.add("show");
+    next.classList.add("show");
+
+    // Start fade-out of current on next frame (so browser registers both states)
+    requestAnimationFrame(() => {
+      current.classList.remove("show"); // fades to 0
+      // next stays show (opacity 1)
+    });
+
+    index = nextIndex;
+  }
+
+  function nextSlide() {
+    const nextIndex = (index + 1) % slides.length;
+    crossfadeTo(nextIndex);
+  }
+
+  function start() {
+    stop();
+    timer = setInterval(nextSlide, (stillTime + fadeTime) * 1000);
+  }
+
+  function stop() {
+    if (timer) clearInterval(timer);
+    timer = null;
+  }
+
+  function togglePause(e) {
+    if (e) e.preventDefault();
+    paused = !paused;
+    paused ? stop() : start();
+  }
+
+  // Init
+  showInitial();
+  start();
+
+  slideshow.addEventListener("click", togglePause);
+  slideshow.addEventListener("touchstart", togglePause, { passive: false });
+})();
+</script>
+
+</body>
+</html>
