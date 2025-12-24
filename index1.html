@@ -34,7 +34,6 @@ html, body {
 }
 
 .slide {
-  position: relative;
   width: 100%;
   height: 100vh;
   background: black;
@@ -54,7 +53,7 @@ html, body {
   display: block;
 }
 
-/* ---------- UI HUD ---------- */
+/* ---------- HUD ---------- */
 .hud {
   position: fixed;
   top: 12px;
@@ -123,10 +122,11 @@ html, body {
 
   const stillTime = parseFloat(params.get("time")) || 3;
   const fadeTime  = 1;
+  const maxSlides = 500;
 
   const slideshow = document.getElementById("slideshow");
 
-  // HUD elements
+  // HUD
   const hudText = document.getElementById("hudText");
   const hudDot  = document.getElementById("hudDot");
   const hudHint = document.getElementById("hudHint");
@@ -143,11 +143,42 @@ html, body {
     }
   }
 
-  // Grab original images
-  const imgs = Array.from(slideshow.querySelectorAll("img"));
+  /* ---------------------------
+     IMAGE LIST
+  ---------------------------- */
+  const originalImgs = Array.from(slideshow.querySelectorAll("img"));
 
-  // Wrap into slides
-  const slides = imgs.map(img => {
+  const requestedCount = parseInt(params.get("count"), 10);
+  const slideCount = Math.min(
+    Math.max(requestedCount || originalImgs.length, 1),
+    maxSlides
+  );
+
+  const imgs = originalImgs.slice(0, slideCount);
+  originalImgs.slice(slideCount).forEach(img => img.remove());
+
+  // sub1, sub2, ...
+  for (let i = 1; i <= imgs.length; i++) {
+    const sub = params.get(`sub${i}`);
+    if (sub) imgs[i - 1].src = sub;
+  }
+
+  // start on specific image
+  const startImage = params.get("n");
+  if (startImage) {
+    const idx = imgs.findIndex(img => img.getAttribute("src") === startImage);
+    if (idx > -1) {
+      imgs.slice(idx).concat(imgs.slice(0, idx))
+        .forEach(img => slideshow.appendChild(img));
+    }
+  }
+
+  const orderedImgs = Array.from(slideshow.querySelectorAll("img"));
+
+  /* ---------------------------
+     WRAP INTO SLIDES
+  ---------------------------- */
+  const slides = orderedImgs.map(img => {
     const wrap = document.createElement("div");
     wrap.className = "slide";
     img.parentNode.insertBefore(wrap, img);
@@ -169,6 +200,21 @@ html, body {
     autoScrolling = true;
     slideshow.scrollTo({ top: slides[i].offsetTop, behavior });
     setTimeout(() => autoScrolling = false, 700);
+  }
+
+  function jumpToFirst() {
+    autoScrolling = true;
+    slideshow.scrollTo({ top: slides[0].offsetTop, behavior: "auto" });
+    setTimeout(() => autoScrolling = false, 50);
+  }
+
+  function jumpToLast() {
+    autoScrolling = true;
+    slideshow.scrollTo({
+      top: slides[slides.length - 1].offsetTop,
+      behavior: "auto"
+    });
+    setTimeout(() => autoScrolling = false, 50);
   }
 
   function nextSlide() {
@@ -197,6 +243,24 @@ html, body {
   function onScroll() {
     if (autoScrolling) return;
 
+    const scrollTop = slideshow.scrollTop;
+    const maxScroll = slideshow.scrollHeight - slideshow.clientHeight;
+
+    // ---- infinite loop ----
+    if (scrollTop >= maxScroll - 2) {
+      index = 0;
+      showOnly(index);
+      jumpToFirst();
+      return;
+    }
+    if (scrollTop <= 2) {
+      index = slides.length - 1;
+      showOnly(index);
+      jumpToLast();
+      return;
+    }
+
+    // user scroll pauses autoplay
     if (!paused) {
       paused = true;
       stop();
@@ -205,13 +269,16 @@ html, body {
 
     clearTimeout(scrollDebounce);
     scrollDebounce = setTimeout(() => {
-      const pos = slideshow.scrollTop + window.innerHeight / 2;
+      const pos = scrollTop + window.innerHeight / 2;
       let best = 0, bestDist = Infinity;
 
       slides.forEach((s, i) => {
         const mid = s.offsetTop + s.offsetHeight / 2;
         const d = Math.abs(mid - pos);
-        if (d < bestDist) { bestDist = d; best = i; }
+        if (d < bestDist) {
+          bestDist = d;
+          best = i;
+        }
       });
 
       index = best;
@@ -219,7 +286,7 @@ html, body {
     }, 120);
   }
 
-  // Init
+  // INIT
   showOnly(0);
   slideshow.scrollTo({ top: 0, behavior: "auto" });
   start();
