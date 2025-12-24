@@ -19,30 +19,32 @@ html, body {
   padding: 0;
   width: 100%;
   height: 100%;
-  overflow: hidden;
   background: black;
 }
 
 .slideshow {
   position: relative;
   width: 100%;
-  height: 100%;
+  height: 100vh;
   background: black;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* IMPORTANT:
-   The slide itself is an opaque black "matte" covering the whole screen.
-   This prevents seeing any other slide through the contain-margins. */
 .slide {
-  position: absolute;
-  inset: 0;
+  position: relative;
   width: 100%;
-  height: 100%;
-  background: black;   /* blocks anything behind it */
+  height: 100vh;
+  background: black;
+  scroll-snap-align: start;
   opacity: 0;
-  pointer-events: none;
   transition: opacity 1s ease-in-out;
-  z-index: 0;
+}
+
+.slide.show {
+  opacity: 1;
 }
 
 .slide img {
@@ -52,22 +54,58 @@ html, body {
   display: block;
 }
 
-/* The currently visible slide (fading out) */
-.slide.show {
-  opacity: 1;
+/* ---------- UI HUD ---------- */
+.hud {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 9999;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-size: 14px;
+  color: #fff;
+  user-select: none;
+  pointer-events: none;
 }
 
-/* The incoming slide (fading in) sits on top */
-.slide.top {
-  z-index: 1;
+.hud .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.18);
+  backdrop-filter: blur(6px);
+}
+
+.hud .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.hud .hint {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.75;
+  text-align: right;
 }
 </style>
 </head>
 
 <body>
 
+<!-- HUD -->
+<div class="hud">
+  <div class="pill">
+    <span class="dot" id="hudDot"></span>
+    <span id="hudText">Playing</span>
+  </div>
+  <div class="hint" id="hudHint">Tap to pause • Scroll to browse</div>
+</div>
+
 <div class="slideshow" id="slideshow">
-  <!-- Keep your image list exactly as you like -->
   <img src="Slide1.PNG">
   <img src="Slide2.PNG">
   <img src="Slide3.PNG">
@@ -77,69 +115,41 @@ html, body {
   <img src="IMG20251224123009.PNG">
   <img src="IMG20251220155230.PNG">
   <img src="IMG20251220155304.PNG">
-
 </div>
 
 <script>
 (() => {
   const params = new URLSearchParams(location.search);
 
-  const stillTime = parseFloat(params.get("time")) || 3; // seconds fully visible
-  const fadeTime  = 1;                                   // seconds (matches CSS transition)
-  const maxSlides = 500;
+  const stillTime = parseFloat(params.get("time")) || 3;
+  const fadeTime  = 1;
 
   const slideshow = document.getElementById("slideshow");
 
-  // Grab original <img> list (from your HTML)
-  const originalImgs = Array.from(slideshow.querySelectorAll("img"));
+  // HUD elements
+  const hudText = document.getElementById("hudText");
+  const hudDot  = document.getElementById("hudDot");
+  const hudHint = document.getElementById("hudHint");
 
-  /* ---------------------------
-     0) SLIDE COUNT (?count=1..500)
-  ---------------------------- */
-  const requestedCount = parseInt(params.get("count"), 10);
-  const slideCount = Math.min(
-    Math.max(requestedCount || originalImgs.length, 1),
-    maxSlides
-  );
-
-  const imgs = originalImgs.slice(0, slideCount);
-
-  // Remove any extra images beyond count
-  originalImgs.slice(slideCount).forEach(img => img.remove());
-
-  /* ---------------------------
-     1) SUBSTITUTE SLIDES (?sub1=... ?sub2=...)
-  ---------------------------- */
-  for (let i = 1; i <= imgs.length; i++) {
-    const sub = params.get(`sub${i}`);
-    if (sub && imgs[i - 1]) {
-      imgs[i - 1].src = sub;
+  function setHud(paused, reason = "") {
+    if (paused) {
+      hudText.textContent = reason ? `Paused (${reason})` : "Paused";
+      hudDot.style.color = "rgba(200,200,200,0.95)";
+      hudHint.textContent = "Tap to play • Scroll to browse";
+    } else {
+      hudText.textContent = "Playing";
+      hudDot.style.color = "rgba(120,255,160,0.95)";
+      hudHint.textContent = "Tap to pause • Scroll to browse";
     }
   }
 
-  /* ---------------------------
-     2) START ON A SPECIFIC IMAGE (?n=Slide3.PNG)
-  ---------------------------- */
-  const startImage = params.get("n");
-  if (startImage) {
-    const idx = imgs.findIndex(img => img.getAttribute("src") === startImage);
-    if (idx > -1) {
-      const reordered = imgs.slice(idx).concat(imgs.slice(0, idx));
-      reordered.forEach(img => slideshow.appendChild(img));
-    }
-  }
+  // Grab original images
+  const imgs = Array.from(slideshow.querySelectorAll("img"));
 
-  // Refresh imgs in DOM order after reordering/substitution
-  const orderedImgs = Array.from(slideshow.querySelectorAll("img"));
-
-  /* ---------------------------
-     3) Convert <img> tags into .slide wrappers with black matte
-        (prevents bleed-through during crossfade)
-  ---------------------------- */
-  const slides = orderedImgs.map(img => {
+  // Wrap into slides
+  const slides = imgs.map(img => {
     const wrap = document.createElement("div");
     wrap.className = "slide";
-    // move <img> into wrapper
     img.parentNode.insertBefore(wrap, img);
     wrap.appendChild(img);
     return wrap;
@@ -148,46 +158,29 @@ html, body {
   let index = 0;
   let timer = null;
   let paused = false;
+  let autoScrolling = false;
+  let scrollDebounce = null;
 
-  function showInitial() {
-    slides.forEach(s => {
-      s.classList.remove("show", "top");
-      s.style.zIndex = "0";
-    });
-    slides[0].classList.add("show", "top");
-    slides[0].style.zIndex = "1";
+  function showOnly(i) {
+    slides.forEach((s, k) => s.classList.toggle("show", k === i));
   }
 
-  function crossfadeTo(nextIndex) {
-    const current = slides[index];
-    const next = slides[nextIndex];
-
-    // Ensure stacking: next on top
-    slides.forEach(s => { s.style.zIndex = "0"; s.classList.remove("top"); });
-    current.style.zIndex = "0";
-    next.style.zIndex = "1";
-    next.classList.add("top");
-
-    // Make sure both are visible for crossfade
-    current.classList.add("show");
-    next.classList.add("show");
-
-    // Start fade-out of current on next frame (so browser registers both states)
-    requestAnimationFrame(() => {
-      current.classList.remove("show"); // fades to 0
-      // next stays show (opacity 1)
-    });
-
-    index = nextIndex;
+  function scrollToIndex(i, behavior = "smooth") {
+    autoScrolling = true;
+    slideshow.scrollTo({ top: slides[i].offsetTop, behavior });
+    setTimeout(() => autoScrolling = false, 700);
   }
 
   function nextSlide() {
-    const nextIndex = (index + 1) % slides.length;
-    crossfadeTo(nextIndex);
+    index = (index + 1) % slides.length;
+    showOnly(index);
+    scrollToIndex(index);
   }
 
   function start() {
     stop();
+    paused = false;
+    setHud(false);
     timer = setInterval(nextSlide, (stillTime + fadeTime) * 1000);
   }
 
@@ -198,16 +191,42 @@ html, body {
 
   function togglePause(e) {
     if (e) e.preventDefault();
-    paused = !paused;
-    paused ? stop() : start();
+    paused ? start() : (paused = true, stop(), setHud(true));
+  }
+
+  function onScroll() {
+    if (autoScrolling) return;
+
+    if (!paused) {
+      paused = true;
+      stop();
+      setHud(true, "scroll");
+    }
+
+    clearTimeout(scrollDebounce);
+    scrollDebounce = setTimeout(() => {
+      const pos = slideshow.scrollTop + window.innerHeight / 2;
+      let best = 0, bestDist = Infinity;
+
+      slides.forEach((s, i) => {
+        const mid = s.offsetTop + s.offsetHeight / 2;
+        const d = Math.abs(mid - pos);
+        if (d < bestDist) { bestDist = d; best = i; }
+      });
+
+      index = best;
+      showOnly(index);
+    }, 120);
   }
 
   // Init
-  showInitial();
+  showOnly(0);
+  slideshow.scrollTo({ top: 0, behavior: "auto" });
   start();
 
   slideshow.addEventListener("click", togglePause);
   slideshow.addEventListener("touchstart", togglePause, { passive: false });
+  slideshow.addEventListener("scroll", onScroll, { passive: true });
 })();
 </script>
 
